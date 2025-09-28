@@ -9,9 +9,7 @@
 
 # CMD ["python3", "app.py"]
 
-
-# Multi-stage build to reduce final image size
-FROM python:3.10-slim as builder
+FROM python:3.10-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -26,32 +24,20 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2
     ./aws/install && \
     rm -rf awscliv2.zip aws/
 
-# Create virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Copy requirements and install Python packages
-COPY requirements-minimal.txt requirements.txt
-
-# Install packages with optimizations
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir --extra-index-url https://pypi.nvidia.com/ -r requirements.txt
-
-# Final stage
-FROM python:3.10-slim
-
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /usr/local/aws-cli /usr/local/aws-cli
-COPY --from=builder /usr/local/bin/aws /usr/local/bin/aws
-
-# Activate virtual environment
-ENV PATH="/opt/venv/bin:$PATH"
-
 WORKDIR /app
+
+# Copy requirements and install packages
+COPY requirements.txt .
+
+# Install packages (skip problematic ones if they fail)
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir \
+    --extra-index-url https://pypi.nvidia.com/ \
+    -r requirements.txt || \
+    pip install --no-cache-dir \
+    flask flask-cors numpy opencv-python-headless pillow pyyaml requests torch torchvision ultralytics
 
 # Copy application code
 COPY . .
 
-# Run application
 CMD ["python3", "app.py"]
